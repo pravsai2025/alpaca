@@ -7,10 +7,8 @@ tile; hovering flips through screenshots). Each game has its own page with a big
 splash screen with a Play button, Favourite / Share / Restart / New tab / Fullscreen, more
 games, the description, screenshots and controls. Recently played and favourites are
 remembered in each visitor's browser.
-Games on it so far:
-
-- **Apex Garage**: a 3D car-tuning and driving game, in [`car-customizer/`](car-customizer/README.md).
-- **Apex Drift**: the drifting game built on Apex Garage (same cars, garage and locations), in [`apex-drift/`](apex-drift/README.md).
+**Apex Garage** is the first game on it (a 3D car-tuning, driving and drifting game); its own files and
+instructions are in [`car-customizer/`](car-customizer/README.md).
 
 ## Run it in VS Code
 
@@ -69,5 +67,4 @@ site/app.js       builds the pages from games.js
 site/covers/      cover pictures and screenshots
 server.js         runs the site + multiplayer (uses car-customizer/server.js)
 car-customizer/   Apex Garage
-apex-drift/       Apex Drift
 ```

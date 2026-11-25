@@ -88,6 +88,24 @@ how it accelerates, grips and slides.
 - **Apex Raceway** — a 1.5 km circuit in daylight with lap timing. Grass is slow and slippery.
 - **Neon District** — a night-time city grid to free-roam, with solid buildings.
 
+**Drift events**
+
+At the top of the Drive menu. Pick a location (Apex Raceway, Neon District or Midnight
+Expressway) and a mode, then press *Start*. The car you built is switched to the **Drift** driving
+mode for the event (your usual mode comes back afterwards), and a 3-2-1 countdown starts it.
+
+- **Drift Attack** — three laps on the raceway, or two minutes in the city or on the expressway.
+  Finish it for a bronze, silver or gold medal; press `Esc` early and the run is abandoned.
+- **Free Drift** — no clock and no laps. Press `Esc` to bank your points.
+
+Scoring: a drift counts while the car slides 12°–110° above 25 km/h on the road. Points grow with
+angle × speed, and the multiplier climbs to ×5 the longer you keep sliding (one step every 2.2 s).
+Straighten up for about a second and the drift is banked. A hard wall hit, a crash, a reset or
+running off the road loses the drift in progress. On the expressway, drifting close past traffic
+adds a bonus. Results show your score, best single drift and how far the next medal is; best
+scores per location and mode are kept in the browser. Rules and medal targets are at the top of
+`js/drift.js`.
+
 **Transmissions**
 
 - **Automatic** — the car shifts for you.
@@ -316,6 +334,7 @@ car-customizer/
 │   ├── world.js        Drivable locations: expressway, race circuit, night city
 │   ├── traffic.js      AI traffic for the expressway
 │   ├── score.js        Points, combo multiplier, records and leaderboard
+│   ├── drift.js        Drift events: drift scoring, medal targets and drift records
 │   ├── drive.js        Drive mode: vehicle physics, driving modes, transmissions, cameras
 │   ├── drag.js         Drag race control: staging, tree, timing, time slip
 │   ├── chute.js        Parachute pack and canopy

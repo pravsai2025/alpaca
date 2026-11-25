@@ -13,6 +13,7 @@ import { Net } from './net.js';
 import { RemoteCars } from './remote.js';
 import { WORLDS } from './world.js';
 import { Records } from './score.js';
+import { DriftScore, DriftRecords, TARGETS as DRIFT_TARGETS } from './drift.js';
 
 const STORE = 'apex-garage-saves-v2', OLD_STORE = 'apex-garage-build-v1';
 const $ = id => document.getElementById(id);
@@ -187,6 +188,7 @@ let boardWorld = prefs.world || 'highway';
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function renderDriveMenu() {
   const worlds = $('dmWorlds'), trans = $('dmTrans'), tabs = $('dmTabs'), board = $('dmBoard');
+  renderDriftMenu();
   worlds.replaceChildren(...WORLDS.map(w => {
     const b = el('button', 'card world'), top = el('div', 'card-top'); top.append(el('b', '', w.name), el('em', '', `Best ${num(Records.best(w.id))}`));
     b.append(top, el('p', '', w.desc)); b.onclick = () => app.drive(w.id); return b;
@@ -341,6 +343,107 @@ const feed = (label, pts, kind) => {
 drive.score.onEvent = e => feed(e.label, e.pts, e.kind);
 drive.onNotice = msg => feed(msg, 0, 'minor');
 
+// ---- drift events: Drift Attack (3 laps or 2 minutes, medals) and Free Drift.
+// While one runs, DriftScore stands in for the normal Score and the car uses the Drift driving mode.
+const DRIFT_LOCATIONS = [
+  { id: 'circuit', name: 'Apex Raceway', attack: '3 laps' },
+  { id: 'city', name: 'Neon District', attack: '2 minutes' },
+  { id: 'highway', name: 'Midnight Expressway', attack: '2 minutes' },
+];
+const DRIFT_LAPS = 3, DRIFT_TIME = 120;
+const baseScore = drive.score, driftScore = new DriftScore();
+driftScore.onEvent = e => {
+  feed(e.label, e.kind === 'bad' ? 0 : e.pts, e.kind);
+  if (!audio.ctx) return;
+  if (e.kind === 'good') audio._burst({ dur: 0.18, f0: 1400 + Math.min(4, driftScore.mult) * 200, f1: 2200, q: 8, gain: 0.25 });
+  if (e.kind === 'bad') audio._burst({ dur: 0.35, f0: 600, f1: 150, q: 2, gain: 0.3 });
+};
+let driftEv = null;                                            // the drift event in progress, if any
+const dPrefs = () => (prefs.driftEv = { world: 'circuit', mode: 'attack', ...(prefs.driftEv || {}) });
+const countText = (text, cls = '') => { const c = $('hudCount'); c.className = 'hud-count ' + cls; c.textContent = text; };
+const beep = go => { if (audio.ctx) audio._burst({ dur: go ? 0.5 : 0.22, f0: go ? 1760 : 880, f1: go ? 1760 : 880, q: 30, gain: 0.35 }); };
+const lapLabels = (a, b, c) => { $('hudLapLbl').textContent = a; $('hudLastLbl').textContent = b; $('hudBestLbl').textContent = c; };
+function renderDriftMenu() {
+  const dp = dPrefs(), t = DRIFT_TARGETS[dp.world], best = DriftRecords.best(dp.world, dp.mode), loc = DRIFT_LOCATIONS.find(l => l.id === dp.world);
+  const chip = (label, on, fn) => { const b = el('button', 'chip' + (on ? ' on' : ''), label); b.onclick = () => { fn(); savePrefs(); renderDriftMenu(); }; return b; };
+  const row = (...kids) => { const r = el('div', 'chip-row'); r.append(...kids); return r; };
+  const targets = el('div', 'targets');
+  ['Bronze', 'Silver', 'Gold'].forEach((n, i) => { const sp = el('span', DriftRecords.best(dp.world, 'attack') >= t[i] ? 'got' : '', n); sp.append(el('b', '', num(t[i]))); targets.append(sp); });
+  const go = el('button', 'btn btn-drive wide-btn', `Start ${dp.mode === 'attack' ? 'Drift Attack' : 'Free Drift'} — ${loc.name}`);
+  go.onclick = () => app.driftEvent(dp.world, dp.mode);
+  const box = el('div', 'drift-event');
+  box.append(
+    row(...DRIFT_LOCATIONS.map(l => chip(l.name, dp.world === l.id, () => { dp.world = l.id; }))),
+    row(chip(`Drift Attack · ${loc.attack}`, dp.mode === 'attack', () => { dp.mode = 'attack'; }), chip('Free Drift', dp.mode === 'free', () => { dp.mode = 'free'; })),
+    el('p', 'dm-note', (dp.mode === 'attack' ? 'Score as much as you can for a medal. ' : 'No clock — press Esc to bank your points. ') +
+      `Hold long, fast slides: the multiplier climbs to ×5. Straighten up to bank a drift; a wall hit or leaving the road loses it. Your best: ${best ? num(best) : '—'}.`),
+    ...(dp.mode === 'attack' ? [targets] : []), go);
+  $('dmDrift').replaceChildren(box);
+}
+app.driftEvent = (world, mode) => {
+  $('driftResults').classList.remove('show');
+  driftEv = { world, mode, prevMode: drive.mode.id, count: 3.4, last: 4, t: 0, done: 0 };
+  drive.score = driftScore; driftScore.mode = mode; driftScore.enabled = false;
+  drive.setMode('drift');
+  app.drive(world);
+  driftScore.best = DriftRecords.best(world, mode);
+  hud.place.previousElementSibling.textContent = mode === 'attack' ? 'Drift Attack' : 'Free Drift';
+  hud.laps.style.display = '';
+  if (!drive.world.hasLaps) lapLabels(mode === 'attack' ? 'Time left' : 'Time', 'Drifts', 'Best drift');
+  countText('');
+};
+/** Runs every frame while a drift event is on. Returns the input to drive with. */
+function driftStep(dt, inp) {
+  const ev = driftEv;
+  if (ev.count > 0) {
+    ev.count -= dt;
+    const n = Math.ceil(ev.count);
+    if (n !== ev.last && n <= 3) { ev.last = n; if (n > 0) { countText(String(n)); beep(false); } }
+    if (ev.count <= 0) { countText('GO!', 'go'); beep(true); driftScore.enabled = true; setTimeout(() => { if (driftEv === ev && !ev.done) countText(''); }, 900); }
+    return { fwd: 0, back: 0, steer: 0, hand: 1, clutch: 0 };
+  }
+  if (ev.done) { ev.done -= dt; if (ev.done <= 0) ev.leave = true; return inp; }
+  ev.t += dt;
+  if (ev.mode === 'attack' && (drive.world.hasLaps ? drive.lap.count >= DRIFT_LAPS : ev.t >= DRIFT_TIME)) {
+    driftScore.bank(); driftScore.enabled = false; ev.done = 1.8; ev.finished = true; countText('FINISH', 'go');
+    if (audio.ctx) [0, 0.12, 0.24].forEach((d, i) => audio._burst({ dur: 0.3, f0: 1046 + i * 262, f1: 1046 + i * 262, q: 30, gain: 0.3, delay: d }));
+  }
+  return inp;
+}
+function driftHud(d) {
+  const ev = driftEv;
+  hud.mult.textContent = '×' + driftScore.mult;
+  if (drive.world.hasLaps) { if (ev.mode === 'attack') $('hudLapLbl').textContent = `Lap ${Math.min(DRIFT_LAPS, d.lap.count + 1)} / ${DRIFT_LAPS}`; return; }
+  const clock = t => { t = Math.max(0, Math.ceil(t)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+  hud.lap.textContent = ev.mode === 'attack' ? clock(DRIFT_TIME - ev.t) : clock(ev.t);
+  hud.last.textContent = num(driftScore.drifts); hud.best.textContent = num(driftScore.bestCombo);
+}
+/** Called when the run ends (finished, or Esc). res = what DriftScore banked. */
+function endDriftEvent(res) {
+  const ev = driftEv; driftEv = null;
+  drive.score = baseScore; app.setMode(ev.prevMode); countText('');
+  lapLabels('Lap', 'Last', 'Best'); hud.place.previousElementSibling.textContent = 'Now driving';
+  const counts = ev.finished || ev.mode === 'free';
+  if (!counts) return ui.toast('Drift Attack abandoned — it only counts when you finish it');
+  if (!res || !res.total) return ui.toast('No drift points banked this time');
+  const c = app.car(), nb = DriftRecords.submit(ev.world, ev.mode, res.total, res.combo, `${c.brand} ${c.name}`), t = DRIFT_TARGETS[ev.world];
+  let medal = 0; if (ev.mode === 'attack') for (let i = 0; i < 3; i++) if (res.total >= t[i]) medal = i + 1;
+  const names = ['none', 'bronze', 'silver', 'gold'], loc = DRIFT_LOCATIONS.find(l => l.id === ev.world);
+  $('resMedal').className = 'medal ' + names[medal]; $('resMedal').textContent = medal ? 'BSG'[medal - 1] : '—'; $('resMedal').hidden = ev.mode !== 'attack';
+  $('resKicker').textContent = ev.mode === 'attack' ? 'DRIFT ATTACK COMPLETE' : 'FREE DRIFT';
+  $('resTitle').textContent = ev.mode === 'attack' ? (medal ? `${names[medal][0].toUpperCase()}${names[medal].slice(1)} medal` : 'No medal this time') : 'Session banked';
+  const next = ev.mode === 'attack' ? t.find(v => v > res.total) : 0;
+  $('resSub').textContent = `${loc.name} · ${c.brand} ${c.name}` + (next ? ` · ${num(next - res.total)} more for the next medal` : '');
+  $('resStats').replaceChildren(...[['Score', num(res.total), nb.best], ['Best drift', num(res.combo), nb.combo], ['Drifts', num(res.drifts)], ['Time', fmtLap(ev.t)]].map(([k, v, n]) => {
+    const d = el('div', n ? 'new' : ''); d.append(el('small', '', k), el('b', '', v)); return d;
+  }));
+  $('driftResults').classList.add('show'); $('resAgain').focus();
+  app.lastDrift = ev;
+}
+$('resAgain').addEventListener('click', () => { const ev = app.lastDrift; if (ev) app.driftEvent(ev.world, ev.mode); });
+$('resMenu').addEventListener('click', () => { $('driftResults').classList.remove('show'); app.openDriveMenu(); });
+$('resClose').addEventListener('click', () => $('driftResults').classList.remove('show'));
+
 app.drive = (id, opts = {}) => {
   $('driveMenu').classList.remove('show');
   if (app.toggles.xray) app.toggle('xray');
@@ -362,12 +465,13 @@ app.drive = (id, opts = {}) => {
 };
 app.exitDrive = () => {
   if (!app.driving) return;
-  const res = drive.exit(); app.driving = false; document.body.classList.remove('dragging');
+  const res = drive.exit(), drift = !!driftEv; app.driving = false; document.body.classList.remove('dragging');
   if (net.inRoom) net.leave(); remotes.clear(); remotes.group.removeFromParent(); hud.mp.hidden = true; document.body.classList.remove('driving');
   for (const k in keys) keys[k] = false;
   eng.throttle = 0; eng.input = 0; eng.rpm = car.r.engine.idle;
   snapRide(); car.applyStance(app.build, ride.f, ride.r); app.view('q', 0.01);
-  if (res) ui.toast(`Run banked: ${num(res.total)} pts${res.pb ? ' — new personal best!' : ''}${res.rank ? ` · #${res.rank} on the board` : ''}`);
+  if (drift) endDriftEvent(res);
+  else if (res) ui.toast(`Run banked: ${num(res.total)} pts${res.pb ? ' — new personal best!' : ''}${res.rank ? ` · #${res.rank} on the board` : ''}`);
 };
 app.reset = () => { app.slot = null; app.build = defaultBuild(app.car()); rebuild(); stats = app.stats(); ui.refresh(); ui.toast('Returned to factory spec'); };
 app.copySheet = () => {
@@ -437,11 +541,12 @@ window.addEventListener('keydown', e => {
     keys[e.code] = true;
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     if (e.repeat) return;
-    if (e.code === 'Escape') app.exitDrive(); else if (e.code === 'KeyR') drive.respawn(); else if (e.code === 'KeyC') app.nextCamera(); else if (e.code === 'KeyB') app.nextChaseView(); else if (e.code === 'KeyL') app.toggle('lights');
+    if (e.code === 'Escape') app.exitDrive(); else if (e.code === 'KeyR') { if (!(driftEv && driftEv.count > 0)) drive.respawn(); } else if (e.code === 'KeyC') app.nextCamera(); else if (e.code === 'KeyB') app.nextChaseView(); else if (e.code === 'KeyL') app.toggle('lights');
     else if (e.code === 'KeyE') drive.shift(1, !!keys.ShiftLeft); else if (e.code === 'KeyQ') drive.shift(-1, !!keys.ShiftLeft);
     else if (e.code === 'KeyZ' || e.code === 'KeyX' || e.code === 'KeyV') { const k = { KeyZ: 'abs', KeyX: 'tcs', KeyV: 'esp' }[e.code], on = app.toggleAssist(k); feed(`${k.toUpperCase()} ${on ? 'on' : 'off'}`, 0, on ? 'minor' : 'bad'); }
     else if (e.code === 'KeyG') { const su = app.setSetup({ lc: !app.setup().lc }); feed(su.lc ? `Launch control armed at ${su.lcRpm} rpm — hold brake or handbrake, floor it, release` : 'Launch control off', 0, 'minor'); }
     else if (e.code === 'KeyP') feed(drive.toggleChute(), 0, 'minor');
+    else if (e.code === 'KeyM' && driftEv) feed('Drift events always use the Drift driving mode', 0, 'minor');
     else if (e.code === 'KeyM') { const i = DRIVE_MODES.findIndex(m => m.id === drive.mode.id), m = app.setMode(DRIVE_MODES[(i + 1) % DRIVE_MODES.length].id); feed(`${m.name} mode`, 0, 'minor'); }
     else if (/^Digit[1-4]$/.test(e.code)) { const p = app.setAirPreset(AIR_PRESETS[+e.code.slice(5) - 1].id); feed(p ? `Air suspension: ${p.name}` : 'This car has no air suspension — fit it in the Stance panel', 0, 'minor'); }
     else if (e.code === 'Enter' && net.inRoom) { e.preventDefault(); keys.Enter = false; chatInput.focus(); }
@@ -479,10 +584,12 @@ function frame() {
   if (app.driving) {
     const air = hasAir() ? app.build.susp.air : null;
     drive.setRide(ride.f, ride.r, air && air.preset !== 'custom' ? byId(AIR_PRESETS, air.preset) : null);
-    const d = drive.update(dt, {
+    let inp = {
       fwd: keys.KeyW || keys.ArrowUp ? 1 : 0, back: keys.KeyS || keys.ArrowDown ? 1 : 0,
       steer: (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0), hand: keys.Space ? 1 : 0, clutch: keys.ShiftLeft ? 1 : 0,
-    });
+    };
+    if (driftEv) inp = driftStep(dt, inp);
+    const d = drive.update(dt, inp);
     eng.rpm = d.rpm; eng.throttle = d.throttle; eng.boost = d.boost;
     car.update(dt, eng.rpm, 0, true, false, stats.redline);
     hud.speed.textContent = Math.round(d.kmh); hud.gear.textContent = d.gear;
@@ -508,6 +615,7 @@ function frame() {
     hud.bar.style.width = Math.max(0, d.comboT * 100) + '%'; hud.pb.textContent = num(Math.max(d.best, d.score));
     hud.drift.textContent = d.drift >= 5 ? `Drift ${num(d.drift)}` : '';
     if (d.hasLaps) { hud.lap.textContent = d.lap.running ? fmtLap(d.time - d.lap.start) : 'Cross the line'; hud.last.textContent = fmtLap(d.lap.last); hud.best.textContent = fmtLap(d.lap.best); }
+    if (driftEv && app.driving) { driftHud(d); if (driftEv.leave) app.exitDrive(); }
   } else {
     stepEngine(dt);
     car.update(dt, eng.rpm, eng.throttle, eng.running, app.toggles.dyno, stats.redline);
@@ -521,4 +629,4 @@ function frame() {
 frame();
 
 // handy for tinkering from the DevTools console
-window.apex = { CAMERA_MODES, app, car, stage, audio, eng, drive, keys, maxDrop, Records, net, remotes, ride };
+window.apex = { CAMERA_MODES, app, car, stage, audio, eng, drive, keys, maxDrop, Records, net, remotes, ride, driftScore, DriftRecords };

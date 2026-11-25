@@ -61,7 +61,9 @@
       <div class="panel-head"><small>DRIVE MODE</small><h2>Where to?</h2></div>
       <div class="drive-cols">
         <div>
-          <div class="sec">Location</div>
+          <div class="sec">Drift events</div>
+          <div id="dmDrift"></div>
+          <div class="sec">Location — free drive</div>
           <div id="dmWorlds"></div>
           <div id="dmDrag" hidden>
             <div class="sec">Drag strip options</div>
@@ -80,7 +82,7 @@
           <div class="sec">Driver aids</div>
           <div class="chip-row" id="dmAids"></div>
           <p class="dm-note" id="dmAidsNote"></p>
-          <div class="keys"><b>W / ↑</b> throttle <b>S / ↓</b> brake <b>A D / ← →</b> steer <b>Space</b> handbrake <b>E</b> shift up <b>Q</b> shift down <b>L-Shift</b> clutch <b>T</b> transmission <b>M</b> driving mode <b>Z</b> ABS <b>X</b> TCS <b>V</b> ESP <b>G</b> launch control <b>P</b> parachute <b>1–4</b> air suspension <b>Enter</b> chat <b>C</b> camera (third-person / cockpit / hood) <b>B</b> third-person distance <b>R</b> reset <b>Esc</b> garage</div>
+          <div class="keys"><b>W / ↑</b> throttle <b>S / ↓</b> brake <b>A D / ← →</b> steer <b>Space</b> handbrake (drift) <b>E</b> shift up <b>Q</b> shift down <b>L-Shift</b> clutch <b>T</b> transmission <b>M</b> driving mode <b>Z</b> ABS <b>X</b> TCS <b>V</b> ESP <b>G</b> launch control <b>P</b> parachute <b>1–4</b> air suspension <b>Enter</b> chat <b>C</b> camera (third-person / cockpit / hood) <b>B</b> third-person distance <b>R</b> reset <b>Esc</b> garage</div>
         </div>
         <div>
           <div class="sec">Multiplayer — Midnight Expressway</div>
@@ -128,11 +130,27 @@
       </div>
       <div class="hud-right">
         <div class="hud-btns"><button class="btn" id="hudChute" hidden>Chute · P</button><button class="btn hud-cam" id="hudCam" title="Switch camera: Third-person → Cockpit → Hood (C). B changes the third-person distance."><small>Camera · C</small><span id="hudCamName">Third-person · Far</span></button><button class="btn" id="hudReset">Reset · R</button><button class="btn btn-drive" id="hudExit">Garage · Esc</button></div>
-        <div class="hud-laps" id="hudLaps"><div><small>Lap</small><b id="hudLap">—</b></div><div><small>Last</small><b id="hudLast">—</b></div><div><small>Best</small><b id="hudBest">—</b></div></div>
+        <div class="hud-laps" id="hudLaps"><div><small id="hudLapLbl">Lap</small><b id="hudLap">—</b></div><div><small id="hudLastLbl">Last</small><b id="hudLast">—</b></div><div><small id="hudBestLbl">Best</small><b id="hudBest">—</b></div></div>
       </div>
     </div>
     <div class="hud-aids" id="hudAids"><i id="aidABS">ABS</i><i id="aidTCS">TCS</i><i id="aidESP">ESP</i><i id="aidLC">LC</i><i id="aidCHUTE">CHUTE</i></div>
     <div class="hud-speed"><b id="hudSpeed">0</b><small>km/h</small><i id="hudGearBox"><span id="hudGear">1</span></i></div>
+  </div>
+
+  <div class="hud-count" id="hudCount" aria-live="assertive"></div>
+
+  <div class="drive-menu" id="driftResults" role="dialog" aria-label="Drift event results">
+    <div class="drive-box result-box">
+      <div class="panel-head"><small id="resKicker">DRIFT ATTACK COMPLETE</small><h2 id="resTitle">Finished</h2></div>
+      <div class="medal" id="resMedal"></div>
+      <p class="dm-note" id="resSub"></p>
+      <div class="res-stats" id="resStats"></div>
+      <div class="res-btns">
+        <button class="btn btn-drive" id="resAgain">Drift again</button>
+        <button class="btn" id="resMenu">Drive menu</button>
+        <button class="btn" id="resClose">Back to garage</button>
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast" role="status"></div>

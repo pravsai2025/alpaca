@@ -1,7 +1,7 @@
-// Drift scoring and records for Apex Drift.
+// Drift events: scoring and records for Drift Attack and Free Drift.
 //
-// DriftScore plugs into Apex Garage's Drive class in place of its own Score (same methods), so the
-// driving, walls and traffic code calls it exactly as it would in Apex Garage.
+// DriftScore stands in for Score (same methods) while a drift event runs, so the
+// driving, walls and traffic code in drive.js calls it exactly as it calls Score.
 //
 //  * A drift counts while the car slides 12°–110° above 25 km/h on the road.
 //  * Points grow with angle × speed. Keep sliding and the multiplier climbs to ×5 (one step every 2.2 s).
@@ -23,13 +23,13 @@ const STORE = 'apex-drift-3d-v1';
 function load() { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch (_) { return {}; } }
 function save(d) { try { localStorage.setItem(STORE, JSON.stringify(d)); } catch (_) { /* storage blocked: keep playing */ } }
 
-export const Records = {
+export const DriftRecords = {
   get() { const d = load(); d.best = d.best || {}; d.prefs = d.prefs || {}; d.points = d.points || 0; d.runs = d.runs || 0; return d; },
   put(d) { save(d); },
-  best(world, mode) { const b = Records.get().best[world] || {}; return mode === 'free' ? b.free || 0 : b.attack || 0; },
+  best(world, mode) { const b = DriftRecords.get().best[world] || {}; return mode === 'free' ? b.free || 0 : b.attack || 0; },
   /** Store a finished run. Returns which records it beat. */
   submit(world, mode, score, combo, car) {
-    const d = Records.get(), b = d.best[world] = d.best[world] || {}, key = mode === 'free' ? 'free' : 'attack', out = {};
+    const d = DriftRecords.get(), b = d.best[world] = d.best[world] || {}, key = mode === 'free' ? 'free' : 'attack', out = {};
     if (score > (b[key] || 0)) { b[key] = score; b[key + 'Car'] = car; out.best = true; }
     if (combo > (b.combo || 0)) { b.combo = combo; out.combo = true; }
     d.points += score; d.runs++;
@@ -45,7 +45,7 @@ export class DriftScore {
     this.world = world; this.car = car;
     this.score = 0; this.mult = 1; this.comboT = 0; this.drift = 0; this.chain = 0; this.gap = 0; this.off = 0;
     this.angle = 0; this.bestCombo = 0; this.drifts = 0; this.t = 0; this.wallNear = false;
-    this.best = Records.best(world, this.mode || 'attack');
+    this.best = DriftRecords.best(world, this.mode || 'attack');
   }
 
   _emit(label, pts, kind = 'good') { if (this.onEvent) this.onEvent({ label, pts: Math.round(pts), kind }); }
